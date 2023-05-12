@@ -40,6 +40,7 @@ static char *publishnotify = NULL;
 static int mqinit = 0;
 static rbusHandle_t rbus_handle;
 static char* mqttdata = NULL;
+static int count = 0;
 
 pthread_mutex_t mqtt_retry_mut=PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t mqtt_retry_con=PTHREAD_COND_INITIALIZER;
@@ -461,56 +462,59 @@ void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_messag
 	{
 		if(msg->payload !=NULL)
 		{
-			MqttCMInfo("Received message from %s qos %d payloadlen %d payload %s\n", msg->topic, msg->qos, msg->payloadlen, (char *)msg->payload);
-
-			int dataSize = msg->payloadlen;
-			char * data = malloc(sizeof(char) * dataSize+1);
-			if(data !=NULL)
+			if(count < 1)
 			{
-				memset(data, 0, sizeof(char) * dataSize+1);
-				data = memcpy(data, (char *) msg->payload, dataSize+1);
-				data[dataSize] = '\0';
-
-				MqttCMInfo("Received dataSize is %d\n", dataSize);
-				MqttCMDebug("write to file /tmp/subscribe_message.bin\n");
-				writeToDBFile("/tmp/subscribe_message.bin",(char *)data,dataSize);
-				MqttCMInfo("write to file done\n");
-			
-				if(mqttdata)
+				MqttCMInfo("Received message from %s qos %d payloadlen %d payload %s\n", msg->topic, msg->qos, msg->payloadlen, (char *)msg->payload);
+				count++;
+				int dataSize = msg->payloadlen;
+				char * data = malloc(sizeof(char) * dataSize+1);
+				if(data !=NULL)
 				{
-					free(mqttdata);
-					mqttdata= NULL;
-				}
+					memset(data, 0, sizeof(char) * dataSize+1);
+					data = memcpy(data, (char *) msg->payload, dataSize+1);
+					data[dataSize] = '\0';
+	
+					MqttCMInfo("Received dataSize is %d\n", dataSize);
+					MqttCMDebug("write to file /tmp/subscribe_message.bin\n");
+					writeToDBFile("/tmp/subscribe_message.bin",(char *)data,dataSize);
+					MqttCMInfo("write to file done\n");
+					if(mqttdata)
+					{
+						free(mqttdata);
+						mqttdata= NULL;
+					}
 
-				mqttdata = malloc(sizeof(char) * dataSize);
-				if(mqttdata !=NULL)
-				{
-					memset(mqttdata, 0, sizeof(char) * dataSize);
-					mqttdata = memcpy(mqttdata, data, dataSize );
-					free(data);
-					data = NULL;
+					mqttdata = malloc(sizeof(char) * dataSize);
+					if(mqttdata !=NULL)
+					{
+						memset(mqttdata, 0, sizeof(char) * dataSize);
+						mqttdata = memcpy(mqttdata, data, dataSize );
+						free(data);
+						data = NULL;
 
-					//send on_message callback event to webconfig via rbus.
-					sendRusEventWebcfgOnMessage(mqttdata, dataSize);
+						//send on_message callback event to webconfig via rbus.
+						sendRusEventWebcfgOnMessage(mqttdata, dataSize);
+					}
+					else
+					{
+						MqttCMError("mqttdata malloc failed\n");
+					}
 				}
 				else
 				{
-					MqttCMError("mqttdata malloc failed\n");
+					MqttCMError("on_message data malloc failed\n");
 				}
 			}
 			else
 			{
-				MqttCMError("on_message data malloc failed\n");
+				MqttCMInfo("Received message more than once, msg count is %d\n",count);
+
 			}
 		}
 		else
 		{
-			MqttCMError("Received payload from mqtt is NULL\n");
+			MqttCMError("Received message from mqtt is NULL\n");
 		}
-	}
-	else
-	{
-		MqttCMError("Received message from mqtt is NULL\n");
 	}
 }
 
